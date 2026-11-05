@@ -16,7 +16,8 @@ import streamlit as st
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import (accuracy_score, classification_report,
                              confusion_matrix, f1_score, matthews_corrcoef,
-                             precision_score, recall_score, roc_auc_score)
+                             precision_score, recall_score, roc_auc_score,
+                             roc_curve)
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "model"
@@ -111,6 +112,27 @@ def plot_metric_bars(table: pd.DataFrame):
     return fig
 
 
+def plot_roc_curves(y, results: dict, highlight: str):
+    """All five ROC curves on one chart; the sidebar's model is drawn thicker."""
+    fig, ax = plt.subplots(figsize=(6, 5))
+    for name, res in results.items():
+        fpr, tpr, _ = roc_curve(y, res["y_prob"])
+        ax.plot(fpr, tpr, color=MODEL_COLORS.get(name, "#64748B"),
+                lw=3 if name == highlight else 1.4,
+                alpha=1.0 if name == highlight else 0.75,
+                label=f"{name} (AUC {res['AUC']:.3f})")
+    ax.plot([0, 1], [0, 1], ls="--", lw=1, color="#94A3B8", label="Random guess")
+    ax.set_xlabel("False positive rate (benign flagged as malignant)")
+    ax.set_ylabel("True positive rate (malignant caught)")
+    ax.set_xlim(-0.01, 1.0)
+    ax.set_ylim(0.0, 1.01)
+    ax.legend(loc="lower right", fontsize=8, frameon=False)
+    ax.grid(alpha=0.3)
+    ax.spines[["top", "right"]].set_visible(False)
+    fig.tight_layout()
+    return fig
+
+
 try:
     meta, models = load_artifacts()
 except Exception as exc:  # most often a scikit-learn version mismatch
@@ -185,7 +207,8 @@ with st.expander("Preview uploaded data"):
 # ----------------------------------------------------------------- results
 results = {name: compute_metrics(m, X, y) for name, m in models.items()}
 
-tab_single, tab_compare = st.tabs([f"Selected model: {model_name}", "Compare all models"])
+tab_single, tab_compare, tab_roc = st.tabs(
+    [f"Selected model: {model_name}", "Compare all models", "ROC curves"])
 
 with tab_single:
     r = results[model_name]
@@ -227,3 +250,21 @@ with tab_compare:
     best = table["MCC"].idxmax()
     st.success(f"Best model on this data by MCC: **{best}** "
                f"(MCC {table.loc[best, 'MCC']:.4f}, F1 {table.loc[best, 'F1']:.4f})")
+
+with tab_roc:
+    st.subheader("ROC curves for all five models")
+    if y.nunique() < 2:
+        st.info("ROC curves need both benign and malignant cases in the data.")
+    else:
+        chart_col, note_col = st.columns([1.4, 1])
+        with chart_col:
+            st.pyplot(plot_roc_curves(y, results, highlight=model_name))
+        with note_col:
+            st.markdown(
+                "Each curve shows the trade-off as the decision threshold moves: "
+                "going right catches more malignant cases but raises more false alarms. "
+                "A curve that hugs the top-left corner is better, and the area under it is the **AUC**.\n\n"
+                f"The model picked in the sidebar (**{model_name}**) is drawn thicker. "
+                "Notice how the Decision Tree's curve is made of a few straight segments: "
+                "a single tree outputs only a handful of distinct probabilities."
+            )
