@@ -39,6 +39,8 @@ ml-classification-streamlit/
 ├── requirements.txt
 ├── README.md
 ├── test_data.csv          # held-out test split used in the experiments
+├── .streamlit/
+│   └── config.toml        # app theme
 └── model/
     ├── logistic_regression.joblib
     ├── decision_tree.joblib
@@ -97,8 +99,13 @@ Errors behind those numbers (out of 42 malignant and 72 benign test cases):
 - **CSV upload** for test data (a sample `test_data.csv` is bundled and also downloadable from the sidebar)
 - **Model selection dropdown** with all five classifiers
 - **Evaluation metrics**: Accuracy, AUC, Precision, Recall, F1 and MCC for the selected model
-- **Confusion matrix and classification report** for the selected model
-- **Compare all models** tab: metrics table and bar chart for all five models on the uploaded data
+- **Confusion matrix and classification report** for the selected model, with TN/FP/FN/TP labelled on each cell
+- **Metric tooltips** that explain each score in plain English, plus a count of missed malignant cases and false alarms
+- **Download predictions**: row-by-row predictions and malignancy probabilities for the selected model as a CSV
+- **Compare all models** tab: metrics table (best model per column shaded, with missed-malignant and false-alarm counts) and a bar chart grouped by metric
+- **ROC curves** tab: all five ROC curves on one chart, with the selected model highlighted
+- **Single-case explorer** tab: pick one row and see every model's prediction and malignancy probability side by side; by default it lists only the cases where the models disagree
+- **Custom theme** (`.streamlit/config.toml`): teal clinical palette used by both the UI and the charts
 
 The app loads the saved `.joblib` pipelines from `model/` and only predicts on the uploaded file; it never retrains.
 
