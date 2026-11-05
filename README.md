@@ -28,9 +28,9 @@ Two things about the data shape the results: the feature scales differ hugely (`
 
 ## c. GitHub repository link
 
-**Repository:** https://github.com/YOUR-USERNAME/ml-classification-streamlit
+**Repository:** https://github.com/hemanth14-collab/ml-classification-streamlit
 
-**Live Streamlit app:** https://YOUR-APP-NAME.streamlit.app
+**Live Streamlit app:** https://ml-classificatio-ehspjndqyzcajw7fsfxlhd.streamlit.app
 
 ```
 ml-classification-streamlit/
