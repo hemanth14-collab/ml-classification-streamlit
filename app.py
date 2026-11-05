@@ -231,6 +231,21 @@ with tab_single:
                                        zero_division=0)
         st.dataframe(pd.DataFrame(report).T.round(4))
 
+    # Row-by-row predictions for the selected model, so results can be checked offline
+    predictions = pd.DataFrame({
+        "row": np.arange(1, len(df) + 1),
+        "actual": y.to_numpy(),
+        "predicted": r["y_pred"],
+        "prob_malignant": np.round(r["y_prob"], 4),
+    })
+    predictions["correct"] = predictions["actual"] == predictions["predicted"]
+    st.download_button(
+        f"⬇️ Download {model_name} predictions (CSV)",
+        predictions.to_csv(index=False),
+        file_name=f"predictions_{model_name.lower().replace(' ', '_')}.csv",
+        mime="text/csv",
+    )
+
 with tab_compare:
     st.subheader("All five models on this test data")
     table = pd.DataFrame({n: {m: res[m] for m in METRIC_COLS + ERROR_COLS}
