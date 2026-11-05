@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import streamlit as st
+from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import (accuracy_score, classification_report,
                              confusion_matrix, f1_score, matthews_corrcoef,
                              precision_score, recall_score, roc_auc_score)
@@ -22,8 +23,30 @@ MODEL_DIR = ROOT / "model"
 SAMPLE_CSV = ROOT / "test_data.csv"
 CLASS_NAMES = ["Benign (0)", "Malignant (1)"]
 METRIC_COLS = ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]
+ERROR_COLS = ["Missed malignant (FN)", "False alarms (FP)"]
 
-st.set_page_config(page_title="Breast Cancer Classifier Comparison", layout="wide")
+# Colours match .streamlit/config.toml so the charts and the UI look like one app
+TEAL = "#0F766E"
+TEAL_CMAP = LinearSegmentedColormap.from_list("teal", ["#F0FDFA", TEAL])
+MODEL_COLORS = {
+    "Logistic Regression": "#0F766E",
+    "Decision Tree": "#B45309",
+    "KNN": "#6D28D9",
+    "Naive Bayes": "#BE185D",
+    "Support Vector Machine": "#1D4ED8",
+}
+
+# Short plain-English explanations shown as tooltips next to each metric
+METRIC_HELP = {
+    "Accuracy": "Share of all cases classified correctly.",
+    "AUC": "How well the malignancy scores rank malignant cases above benign ones (1.0 = perfect ranking).",
+    "Precision": "Of the cases flagged malignant, the share that really were malignant.",
+    "Recall": "Of the truly malignant cases, the share the model caught. The key number for screening.",
+    "F1": "Harmonic mean of Precision and Recall.",
+    "MCC": "Matthews correlation, from -1 to 1. Stays fair when one class is much larger than the other.",
+}
+
+st.set_page_config(page_title="Breast Cancer Classifier Comparison", page_icon="🩺", layout="wide")
 
 
 # ----------------------------------------------------------------- loading
@@ -41,26 +64,49 @@ def compute_metrics(model, X, y) -> dict:
     y_prob = model.predict_proba(X)[:, 1]
     # AUC is undefined if the uploaded file contains only one class
     auc = roc_auc_score(y, y_prob) if len(np.unique(y)) == 2 else float("nan")
+    (_, fp), (fn, _) = confusion_matrix(y, y_pred, labels=[0, 1])
     return {
         "y_pred": y_pred,
+        "y_prob": y_prob,
         "Accuracy": accuracy_score(y, y_pred),
         "AUC": auc,
         "Precision": precision_score(y, y_pred, zero_division=0),
         "Recall": recall_score(y, y_pred, zero_division=0),
         "F1": f1_score(y, y_pred, zero_division=0),
         "MCC": matthews_corrcoef(y, y_pred),
+        "Missed malignant (FN)": int(fn),
+        "False alarms (FP)": int(fp),
     }
 
 
 def plot_confusion(y, y_pred, title):
     cm = confusion_matrix(y, y_pred, labels=[0, 1])
+    # Name each cell so the matrix can be read without remembering the layout
+    cell_names = np.array([["TN", "FP"], ["FN", "TP"]])
+    labels = np.char.add(np.char.add(cm.astype(str), "\n"), cell_names)
     fig, ax = plt.subplots(figsize=(4.2, 3.6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False,
+    sns.heatmap(cm, annot=labels, fmt="", cmap=TEAL_CMAP, cbar=False,
                 xticklabels=CLASS_NAMES, yticklabels=CLASS_NAMES, ax=ax,
-                annot_kws={"size": 14})
+                linewidths=1, linecolor="white", annot_kws={"size": 13})
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     ax.set_title(title, fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
+def plot_metric_bars(table: pd.DataFrame):
+    """Grouped bars: one group per metric, one coloured bar per model."""
+    fig, ax = plt.subplots(figsize=(10, 4))
+    table[METRIC_COLS].T.plot(kind="bar", ax=ax, width=0.8,
+                              color=[MODEL_COLORS.get(n, "#64748B") for n in table.index])
+    ax.set_ylim(max(0.0, np.nanmin(table[METRIC_COLS].values) - 0.05), 1.0)
+    ax.set_ylabel("Score")
+    ax.set_xlabel("")
+    ax.tick_params(axis="x", rotation=0)
+    ax.legend(ncol=5, loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
+    ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
     return fig
 
@@ -86,11 +132,17 @@ st.sidebar.header("2. Model")
 model_name = st.sidebar.selectbox("Choose a classifier", list(models.keys()))
 
 # ----------------------------------------------------------------- header
-st.title("Breast Cancer Diagnosis: Classifier Comparison")
+st.title("🩺 Breast Cancer Diagnosis: Classifier Comparison")
 st.markdown(
     "Five classifiers trained on the **UCI Breast Cancer Wisconsin (Diagnostic)** dataset "
     "(30 features, 569 instances). Upload test data to see how each saved model performs. "
     "Models are loaded from disk and only used for prediction; nothing is retrained."
+)
+st.info(
+    "**Reading the results:** in cancer screening a missed malignant tumour (false negative) "
+    "is far worse than a false alarm, so watch **Recall** and the **Missed malignant** count, "
+    "not just Accuracy. Hover over any metric for a short explanation.",
+    icon="💡",
 )
 
 # ----------------------------------------------------------------- data
@@ -140,7 +192,10 @@ with tab_single:
     st.subheader(f"Evaluation metrics: {model_name}")
     cols = st.columns(len(METRIC_COLS))
     for col, metric in zip(cols, METRIC_COLS):
-        col.metric(metric, "n/a" if np.isnan(r[metric]) else f"{r[metric]:.4f}")
+        col.metric(metric, "n/a" if np.isnan(r[metric]) else f"{r[metric]:.4f}",
+                   help=METRIC_HELP[metric])
+    st.caption(f"Errors: **{r['Missed malignant (FN)']}** malignant case(s) missed, "
+               f"**{r['False alarms (FP)']}** benign case(s) wrongly flagged.")
 
     left, right = st.columns([1, 1.3])
     with left:
@@ -155,20 +210,19 @@ with tab_single:
 
 with tab_compare:
     st.subheader("All five models on this test data")
-    table = pd.DataFrame({n: {m: res[m] for m in METRIC_COLS} for n, res in results.items()}).T
+    table = pd.DataFrame({n: {m: res[m] for m in METRIC_COLS + ERROR_COLS}
+                          for n, res in results.items()}).T
+    table[ERROR_COLS] = table[ERROR_COLS].astype(int)
     table.index.name = "ML Model Name"
-    st.dataframe(table.round(4))
+    # Highlight the best model in each column: highest score, fewest errors
+    styled = (table.style
+              .format("{:.4f}", subset=METRIC_COLS)
+              .highlight_max(subset=METRIC_COLS, color="#CCFBF1")
+              .highlight_min(subset=ERROR_COLS, color="#CCFBF1"))
+    st.dataframe(styled)
+    st.caption("Shaded cells mark the best model for each column.")
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    table.plot(kind="bar", ax=ax, width=0.8)
-    ax.set_ylim(max(0.0, np.nanmin(table.values) - 0.05), 1.0)
-    ax.set_ylabel("Score")
-    ax.set_xlabel("")
-    ax.tick_params(axis="x", rotation=0)
-    ax.legend(ncol=6, loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False)
-    ax.grid(axis="y", alpha=0.3)
-    fig.tight_layout()
-    st.pyplot(fig)
+    st.pyplot(plot_metric_bars(table))
 
     best = table["MCC"].idxmax()
     st.success(f"Best model on this data by MCC: **{best}** "
