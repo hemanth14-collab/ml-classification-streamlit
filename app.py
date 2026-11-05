@@ -252,13 +252,17 @@ with tab_compare:
                           for n, res in results.items()}).T
     table[ERROR_COLS] = table[ERROR_COLS].astype(int)
     table.index.name = "ML Model Name"
-    # Highlight the best model in each column: highest score, fewest errors
-    styled = (table.style
-              .format("{:.4f}", subset=METRIC_COLS)
-              .highlight_max(subset=METRIC_COLS, color="#CCFBF1")
-              .highlight_min(subset=ERROR_COLS, color="#CCFBF1"))
-    st.dataframe(styled)
-    st.caption("Shaded cells mark the best model for each column.")
+    # Highlight the best model in each column: highest score, fewest errors.
+    # pandas' Styler needs jinja2 >= 3.1.5; if an older one is installed, show the plain table.
+    try:
+        styled = (table.style
+                  .format("{:.4f}", subset=METRIC_COLS)
+                  .highlight_max(subset=METRIC_COLS, color="#CCFBF1")
+                  .highlight_min(subset=ERROR_COLS, color="#CCFBF1"))
+        st.dataframe(styled)
+        st.caption("Shaded cells mark the best model for each column.")
+    except (ImportError, AttributeError):
+        st.dataframe(table.round(4))
 
     st.pyplot(plot_metric_bars(table))
 
