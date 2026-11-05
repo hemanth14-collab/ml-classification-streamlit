@@ -207,8 +207,8 @@ with st.expander("Preview uploaded data"):
 # ----------------------------------------------------------------- results
 results = {name: compute_metrics(m, X, y) for name, m in models.items()}
 
-tab_single, tab_compare, tab_roc = st.tabs(
-    [f"Selected model: {model_name}", "Compare all models", "ROC curves"])
+tab_single, tab_compare, tab_roc, tab_case = st.tabs(
+    [f"Selected model: {model_name}", "Compare all models", "ROC curves", "Single-case explorer"])
 
 with tab_single:
     r = results[model_name]
@@ -268,3 +268,45 @@ with tab_roc:
                 "Notice how the Decision Tree's curve is made of a few straight segments: "
                 "a single tree outputs only a handful of distinct probabilities."
             )
+
+with tab_case:
+    st.subheader("What does each model say about one case?")
+    # Cases where at least one model disagrees with the others are the interesting ones
+    all_preds = np.column_stack([results[n]["y_pred"] for n in models])
+    disputed = np.flatnonzero(all_preds.min(axis=1) != all_preds.max(axis=1))
+
+    only_disputed = st.toggle(f"Only show the {len(disputed)} case(s) where the models disagree",
+                              value=len(disputed) > 0, disabled=len(disputed) == 0,
+                              key="case_only_disputed")
+    positions = disputed.tolist() if only_disputed else list(range(len(df)))
+    pos = st.selectbox(
+        "Pick a case (row number in the test data)", positions,
+        format_func=lambda i: f"Row {i + 1}  ·  actual: {CLASS_NAMES[int(y.iloc[i])]}",
+        key="case_pick",
+    )
+
+    actual = int(y.iloc[pos])
+    case_rows = []
+    for name, res in results.items():
+        pred = int(res["y_pred"][pos])
+        case_rows.append({
+            "Model": name,
+            "Prediction": CLASS_NAMES[pred],
+            "P(malignant)": float(res["y_prob"][pos]),
+            "Correct?": "✅" if pred == actual else "❌",
+        })
+    case_table = pd.DataFrame(case_rows).set_index("Model")
+    votes = int((all_preds[pos] == 1).sum())
+
+    left, right = st.columns([1.6, 1])
+    with left:
+        st.dataframe(
+            case_table,
+            column_config={"P(malignant)": st.column_config.ProgressColumn(
+                "P(malignant)", min_value=0.0, max_value=1.0, format="%.3f")},
+        )
+    with right:
+        st.metric("Actual diagnosis", CLASS_NAMES[actual])
+        st.metric("Models voting malignant", f"{votes} of {len(models)}")
+    with st.expander("Feature values for this case"):
+        st.dataframe(X.iloc[[pos]].T.set_axis(["value"], axis=1))
