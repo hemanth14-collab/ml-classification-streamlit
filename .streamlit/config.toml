@@ -1,0 +1,11 @@
+# Custom look for the app: a calm clinical teal instead of Streamlit's default red.
+[theme]
+base = "light"
+primaryColor = "#0F766E"            # teal: buttons, sliders, active tabs
+backgroundColor = "#F8FAFC"         # page background
+secondaryBackgroundColor = "#E6F2F1" # sidebar and input backgrounds
+textColor = "#0F172A"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
